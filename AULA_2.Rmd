@@ -1,0 +1,188 @@
+
+
+Estatística Experimental em Ensaios Agropecuários
+--
+Aula 2 
+-
+
+-
+Métodos quantitativos
+-
+Modelos lineares
+-
+Regressções logit
+-
+modelos multivariados
+
+--
+
+
+Pacotes para Estatística Experimental e entrada de dados
+```{r}
+rm(list=ls())
+library(ds)
+library(ExpDes.pt)
+library(gdata)
+library(agricolae)
+library(plyr)
+library(corrgram)
+```
+
+--
+Entrada de dados
+-
+Como arquivo de texto
+```{r}
+dados<-read.table("dados_reg.csv", header=TRUE,sep="")
+```
+
+Como planilha: vantagem de usar caracteres especiais sem dificultar a codificação,caso haja, usar este chunk inteiro com Ctrl+shift+enter
+```{r}
+dados <- read.xls("dados_reg.xls",header = TRUE, dec = ",")
+#dados$Local<-iconv(dados$Local, "latin1", "UTF-8")
+```
+
+Anexando os dados para que possamos chamar as variáveis pela label de cada variável 
+```{r}
+attach(dados)
+```
+
+Condionaremos os dado num dataframe para que posso comportar tanto valores numéricos, inteiros e strings.
+```{r}
+dados=data.frame(dados)
+```
+
+Verificando a existencia de pontos fora do padrão (outliers)
+
+
+```{r}
+sd.dados = sd(dados[,"Crescimento"], na.rm = T);sd.dados
+dados[dados$Crescimento >= 2 *sd.dados  , ]$Crescimento
+```
+
+Mesmo havendo valores extremos, pode-se verificar por observação
+```{r}
+boxplot(dados$Crescimento)
+par
+boxplot(dados$Crescimento, outline = F)
+```
+
+
+-
+Criando o modelo
+```{r}
+Fator<-as.numeric(Fator)
+Blocos<-as.factor(Blocos)
+Crescimento<-as.numeric(Crescimento)
+
+```
+
+Pelo pacote Expes.pt
+```{r}
+reg <- dbc(Fator,Blocos, Crescimento, quali = FALSE)
+```
+
+
+
+Gerando modelos logit e multivariados generalizados
+```{r}
+rm(list=ls())
+set.seed(123)
+dados<-read.table("dados_GLM.csv", header=TRUE, sep = ",")
+
+summary(dados)
+```
+
+Consideranso um subconjunto com problemas de colinearilidade 
+```{r}
+
+r1<-dscor(dados);r1
+
+dados<-dados[,-c(1,2,10,12,15,18,19)]
+```
+
+Escolhendo apenas uma variável dependente (excluindo Y1)
+```{r}
+dados<-dados[,-(20)]
+```
+
+Testde de normalidade : Exemplo
+```{r}
+shapiro.test(dados[,1])
+``` 
+Teste de correlação das variaveis
+
+```{r}
+bartlett.test(dados)
+
+matr.cor<-cor(dados)
+corrgram(matr.cor, type = "cor", lower.panel = panel.shade,upper.panel = panel.pie)
+```
+
+
+Supondo que os ouliers já foram retirados, testamos os ajustes dos modelos - Distribuições
+```{r}
+modelo.completo.pois <- glm(dados$Y2 ~ . ,family=poisson,data=dados)
+summary(modelo.completo.pois)
+
+modelo.completo.norm <- glm(dados$Y2 ~ . ,family=gaussian,data=dados)
+summary(modelo.completo.norm)
+
+modelo.completo.pois$aic>modelo.completo.norm$aic
+```
+
+Testando para uma binomial
+```{r}
+#modelo.completo.bin<- glm(dados$Y2 ~ . ,family=binomial,data=dados)
+#summary(modelo.completo.bin)
+
+dados[dados$Y2 ==1 |dados$Y2==2  , ]$Y2= 1
+dados[dados$Y2 ==3   , ]$Y2= 0
+
+modelo.completo.bin<- glm(dados$Y2 ~ . ,family=binomial,data=dados)
+summary(modelo.completo.bin)
+
+(modelo.completo.pois$aic | modelo.completo.norm$aic)>modelo.completo.bin$aic
+modelo.completo.bin$aic==modelo.completo.norm$aic
+```
+
+Seleção de variáveis - Stepwise
+```{r}
+Seleciona<- step(modelo.completo.bin,direction="both")
+
+
+modelo.reduzido<- glm(dados$Y2 ~ X5 + X6 + X7 + X23, data=dados)
+summary(modelo.reduzido)
+```
+
+podemos fazer para fins de estudo Cross validation com os dados do modelo, mas neste caso apenas para demosntração
+pois deveriamos ter um banco de dados maior e fazer o ajuste antes da divição do traing set
+```{r}
+divis.data <- sort(sample(nrow(dados), nrow(dados)*0.6))
+t.set<-dados[divis.data,]
+data.valida<-dados[-divis.data,]
+```
+
+verifica o grau de ajuste por dado observado e estimado
+```{r}
+val.predit<-predict(modelo.reduzido,data.valida,type="response")
+```
+
+
+atribui valores de acerto e erro
+
+```{r}
+pred<-ifelse(val.predit>=0.8,1,0)
+
+```
+
+Matriz de confusão
+```{r}
+diagonal.tx<-table(pred,data.valida$Y2)
+(Tx.Acerto=(diagonal.tx[1,1]+diagonal.tx[2,2])/(22) )
+
+(Tx.Acerto>=0.5)
+
+
+```
+
